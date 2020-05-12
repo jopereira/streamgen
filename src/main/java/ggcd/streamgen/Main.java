@@ -18,19 +18,28 @@ import java.net.Socket;
 import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.zip.GZIPInputStream;
 
 public class Main {
     private static Logger log = LoggerFactory.getLogger(Main.class);
 
-    private static class Entry {
+    private static class Entry implements Comparable<Entry> {
         public String id;
         public float rating;
+        public long votes;
 
-        public Entry(String id, float rating) {
+        public Entry(String id, float rating, long votes) {
             this.id = id;
             this.rating = rating;
+            this.votes = votes;
+        }
+
+        @Override
+        public int compareTo(Entry entry) {
+            return Long.compare(this.votes, entry.votes);
         }
     }
 
@@ -66,9 +75,11 @@ public class Main {
 
         br.readLine(); // discard header
         String line = br.readLine();
+        long votes = 0;
         while(line != null) {
             String[] row = line.split("\\t");
-            titles.add(new Entry(row[0], Float.parseFloat(row[1])));
+            votes += Integer.parseInt(row[2]);
+            titles.add(new Entry(row[0], Float.parseFloat(row[1]), votes));
             line = br.readLine();
         }
 
@@ -102,10 +113,14 @@ public class Main {
 
                 PrintWriter pw = new PrintWriter(new OutputStreamWriter(s.getOutputStream()));
 
+                Entry target = new Entry("TARGET", 0, 0);
                 while(!s.isClosed()) {
                     Thread.sleep((long) (iat.sample()*1000*60));
 
-                    Entry entry = titles.get(rng.nextInt(titles.size()));
+                    target.votes = rng.nextLong(votes);
+                    int pos = Collections.binarySearch(titles, target);
+                    if (pos<0) pos = -pos;
+                    Entry entry = titles.get(pos);
                     int rating = (int) (Math.floor(Math.min(10.0, rng.nextFloat()*entry.rating*2.0)));
                     pw.println(entry.id+"\t"+rating);
                     pw.flush();
