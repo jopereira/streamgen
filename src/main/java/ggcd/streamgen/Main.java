@@ -6,12 +6,17 @@ import org.apache.commons.rng.UniformRandomProvider;
 import org.apache.commons.rng.sampling.distribution.AhrensDieterExponentialSampler;
 import org.apache.commons.rng.sampling.distribution.ContinuousSampler;
 import org.apache.commons.rng.simple.RandomSource;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.URI;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.GZIPInputStream;
@@ -31,18 +36,31 @@ public class Main {
 
     public static void main(String[] args) throws Exception {
 
-        String name = args.length<1 ? "title.ratings.tsv.gz" : args[0];
+        String name = args.length<1 ? "title.ratings.tsv.bz2" : args[0];
 
         double rate = args.length<2 ? 120 : Double.parseDouble(args[1]);
 
         log.info("reading IMDb ratings from {}, generating {} events/min", name, rate);
 
-        InputStream is = new CompressorStreamFactory()
-                .createCompressorInputStream(
-                        new BufferedInputStream(
-                                new FileInputStream(name)));
+        InputStream raw;
+        FileSystem fs = null;
 
-        BufferedReader br = new BufferedReader(new InputStreamReader(is));
+        if (name.startsWith("hdfs:")) {
+            Configuration conf = new Configuration();
+            conf.addResource(new Path("/etc/hadoop/core-site.xml"));
+            conf.addResource(new Path("/etc/hadoop/hdfs-site.xml"));
+            fs = FileSystem.get(conf);
+            raw = fs.open(new Path(name));
+        } else if (name.startsWith("http:") || name.startsWith("https:")) {
+            raw = new URL(name).openStream();
+        } else {
+            raw = new FileInputStream(name);
+        }
+
+        BufferedReader br = new BufferedReader(
+                new InputStreamReader(
+                    new CompressorStreamFactory().createCompressorInputStream(
+                        new BufferedInputStream(raw))));
 
         List<Entry> titles = new ArrayList<>();
 
@@ -55,6 +73,7 @@ public class Main {
         }
 
         br.close();
+        if (fs != null) fs.close();
 
         log.info("read {} lines", titles.size());
 
