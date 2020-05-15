@@ -1,5 +1,6 @@
 package ggcd.streamgen;
 
+import org.apache.commons.compress.compressors.CompressorException;
 import org.apache.commons.compress.compressors.CompressorStreamFactory;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 import org.apache.commons.rng.UniformRandomProvider;
@@ -65,11 +66,17 @@ public class Main {
         } else {
             raw = new FileInputStream(name);
         }
+        raw = new BufferedInputStream(raw);
 
-        BufferedReader br = new BufferedReader(
-                new InputStreamReader(
-                    new CompressorStreamFactory().createCompressorInputStream(
-                        new BufferedInputStream(raw))));
+        try {
+            CompressorStreamFactory csf = new CompressorStreamFactory();
+            String format = csf.detect(raw);
+            log.info("detected file compressed with {}", format);
+            raw = csf.createCompressorInputStream(format, raw);
+        } catch(CompressorException ce) {
+            log.info("no compression detected, parsing raw file");
+        }
+        BufferedReader br = new BufferedReader(new InputStreamReader(raw));
 
         List<Entry> titles = new ArrayList<>();
 
