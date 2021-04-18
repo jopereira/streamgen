@@ -50,22 +50,33 @@ public class Main {
 
         double rate = args.length<2 ? 120 : Double.parseDouble(args[1]);
 
-        log.info("reading IMDb ratings from {}, generating {} events/min", name, rate);
-
         InputStream raw;
         FileSystem fs = null;
 
-        if (name.startsWith("hdfs:")) {
-            Configuration conf = new Configuration();
-            conf.addResource(new Path("/etc/hadoop/core-site.xml"));
-            conf.addResource(new Path("/etc/hadoop/hdfs-site.xml"));
-            fs = FileSystem.get(conf);
-            raw = fs.open(new Path(name));
-        } else if (name.startsWith("http:") || name.startsWith("https:")) {
-            raw = new URL(name).openStream();
-        } else {
-            raw = new FileInputStream(name);
+        while(true) {
+            try {
+                log.info("reading IMDb ratings from {}", name);
+
+                if (name.startsWith("hdfs:")) {
+                    Configuration conf = new Configuration();
+                    conf.addResource(new Path("/etc/hadoop/core-site.xml"));
+                    conf.addResource(new Path("/etc/hadoop/hdfs-site.xml"));
+                    fs = FileSystem.get(conf);
+                    raw = fs.open(new Path(name));
+                } else if (name.startsWith("http:") || name.startsWith("https:")) {
+                    raw = new URL(name).openStream();
+                } else {
+                    raw = new FileInputStream(name);
+                }
+
+                break;
+            } catch(Exception e) {
+                log.error("failed to open file (does it exist?)", e);
+                log.info("waiting 5s before retrying...");
+                Thread.sleep(5000);
+            }
         }
+
         raw = new BufferedInputStream(raw);
 
         try {
@@ -73,9 +84,10 @@ public class Main {
             String format = csf.detect(raw);
             log.info("detected file compressed with {}", format);
             raw = csf.createCompressorInputStream(format, raw);
-        } catch(CompressorException ce) {
+        } catch (CompressorException ce) {
             log.info("no compression detected, parsing raw file");
         }
+
         BufferedReader br = new BufferedReader(new InputStreamReader(raw));
 
         List<Entry> titles = new ArrayList<>();
@@ -93,7 +105,7 @@ public class Main {
         br.close();
         if (fs != null) fs.close();
 
-        log.info("read {} lines", titles.size());
+        log.info("read {} lines, generating {} events/min", titles.size(), rate);
 
         UniformRandomProvider rng = RandomSource.create(RandomSource.MT_64);
         ContinuousSampler iat = new AhrensDieterExponentialSampler(rng, 1/rate);
